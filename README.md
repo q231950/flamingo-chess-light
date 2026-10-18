@@ -50,7 +50,7 @@ local games you save when they end. Step back through any finished game, move by
   <img src="docs/screenshots/local-replay.png" width="260" alt="A saved local game replayed from the archive: white won">
 </p>
 
-## Your friends don't need a Light Phone
+## Platform Compatibility
 
 Flamingo Chess is on the App Store, too —
 **[Flamingo Chess for iPhone and iPad](https://apps.apple.com/us/app/checkmate/id6767338427)**,
