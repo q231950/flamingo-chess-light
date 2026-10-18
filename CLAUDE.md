@@ -9,8 +9,9 @@ is in the one module we own:
 | `:tool` | yes | The `#flamingo chess` Light Phone III tool, package `dev.neoneon.flamingo`, plus the chess engine in `dev.neoneon.chesskit` (board, legality, FEN/SAN/LAN/PGN parsers — see `docs/chesskit.md`) |
 | `:sdk:*`, `:plugin`, `:lint-rules`, `:builder` | no | Upstream scaffolding; keep byte-identical to `light/main` |
 
-The project is `#flamingo chess`, but users see the tool as `Chess` — that is its launcher
-`label` in `tool/lighttool.toml`. Keep it `Chess`.
+Users see the tool as `Flamingo Chess` — its launcher `label` in `tool/lighttool.toml`, renamed
+from `Chess` because that title was already taken. `README.md` is the tool's own page, not
+upstream's SDK readme; its screenshots live in `docs/screenshots/`.
 
 `#flamingo chess` spans three repositories, and a change to the wire contract is a
 three-repo change:
@@ -46,7 +47,8 @@ thrown away. So:
 - Never make the tool depend on another module, a catalog entry, or a plugin change of ours.
   A new library must already be in upstream's catalog *and* reachable from `:sdk:client`, or
   Light has to add it first.
-- `git diff light/main --stat -- . ':!tool' ':!docs' ':!CLAUDE.md'` should stay empty.
+- `git diff light/main --stat -- . ':!tool' ':!docs' ':!CLAUDE.md' ':!README.md'` should stay
+  empty. When merging `light/main`, keep our `README.md`.
 - `serverPackage` is committed as `com.lightos`; flip it to `com.thelightphone.sdk.emulator`
   locally for the emulator (building with `-DlightSdk.allowAltServerPackage=true`, or the
   plugin fails the build), and don't commit that.

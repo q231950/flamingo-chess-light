@@ -1,72 +1,101 @@
-# light-sdk
-or: a tool for building Tools
+# Flamingo Chess
 
-## tl;dr
-This repository contains the scaffolding for building simple tools for the Light Phone III. Included are a library ([:sdk:client](./sdk/client)) and placeholder application ([:tool](./tool)) that depends on it. To create a tool that is fully compatible with LightOS, you must write your application code within the `tool` module, using the primitives provided by the sdk client library.
+**Plain chess for the Light Phone III.** No engine, no ratings, no feed, no ads — a board, a
+friend, and your move.
 
-You can and should use current Android best practices: Kotlin for all source code, Compose for UI, Coroutines for async programming, and MVVM architecture. **Although this is appears to be a fairly standard Android dev environment, you will quickly find out that we are (gently but broadly) restricting which Android APIs and third-party libraries can be used. This is in an effort to provide a secure and distinctly _light_ experience for our users. These restrictions are _not_ set in stone and should ease up over time. If there is a stable, open-source library that you'd like us to allow, please let us know! More on this later.**
+<p>
+  <img src="docs/screenshots/games.png" width="260" alt="The Games list: games against Bob's LightIII, each with its status — checkmate, waiting for opponent, their turn, resigned, draw">
+  <img src="docs/screenshots/game.png" width="260" alt="A finished game: checkmate, white won, with the mated king marked and the last move shaded">
+  <img src="docs/screenshots/remote.png" width="260" alt="Remote: New game and Join by code">
+</p>
 
-## IMPORTANT!! July 1, 2026 Update
-If you're reading this, welcome! You're early! (in a cool way)
-This repo is a work-in-progress and will remain so for a while. Things are going to change _fast_ in the coming weeks. If you're going to start building right away, be sure to `git pull` frequently.
-Before you do, though, please be aware that **while we feel good about letting everybody start to explore and build, we are still working on the infrastructure to properly deploy your new tools.**
-The currently builds of LightOS in the wild are not yet ready to "play nice" with the tools built here. If you're someone who's already comfortable working with ADB to sideload APKs on your
-Light Phone III, you can totally do that with whatever you do here! But we're shooting to make these tools feel as seamless as the ones already available in LightOS, and that's going to take a bit more work. 
-We're hoping to have an update on that front later this month. In the meantime, the best way to start working is to use an Android emulator running our new [LightOS Emulator](sdk/emulator). The instructions for getting that up and running
-are [right here](docs/system_app).
+The Light Phone is made to be used as little as possible, and chess by correspondence fits it
+perfectly: make your move, put the phone away, and pick it up again when your friend has
+answered. A game can last ten minutes or two weeks — it waits for you.
 
-## Quickstart
+## Play a friend, wherever they are
 
-### Running your Tool
-**You can test your tool on any Android device or emulator**, but certain functionality (receiving push notifications, requesting special permissions) can only be tested with:
-A) Real Light Phone hardware running LightOS
-B) An Android emulator (on your computer) set up to run our LightOS emulator app as a _system app_ ([see advanced instructions](docs/system_app))
+Tap **REMOTE**, then **New game**, choose white or black, and Flamingo Chess hands you a
+five-letter code like `ADKRF`. Text it to a friend. They pick **Join by code**, type the
+letters, and the game is on.
 
-You can quickly [create an emulator](https://developer.android.com/studio/run/managing-avds) that generally feels like an LPIII by using the following settings:
-* 1080 X 1240, 3.92" display
-* Android API 34
-* NO Google Play Services installed
+While you both have the game open, moves arrive the moment they are made. When you don't, the
+game simply waits — the Games list tells you whose turn it is, and how long it has been.
 
-### Start Building
-1. Fork and/or clone this repository into your local dev environment.
-2. Install Android Studio and open this project within it. (IntelliJ IDEA should also work)
+## Or the person across the table
 
-3. Edit the code in `HomeScreen` and `HomeScreenViewModel` to get started. `Homescreen` surfaces a `@Composable` method named `Content`. This is the UI that is shown when the tool first boots. You'll notice this UI sources data from it's `viewModel` field, which is an instance of `HomeScreenViewModel`. Edit that class with your screen's logic and expose the data to the UI using either Compose `State` or Coroutine `Flow`s. If you want to create a new screen, create a new Screen/ViewModel pair: your screen should extend from `LightScreen` and your VM from `LightScreenViewModel`. Your screen implementation will need:
-   1. A direct reference to your ViewModel's class type
-   2. A factory method for creating a new instance of your ViewModel.
+Tap **LOCAL** for two players on one phone — no connection needed. After every move the board
+fades and turns around to face the other player. Moved the wrong piece? Take it back. Done?
+Reset the board and play again.
 
-Look at `HomeScreen` as an example for how this is done. To navigate to your new screen, use the `navigateTo` function built into `LightScreen` - just pass it a lambda to create an instance of your new screen. Note that the `LightScreen` constructor takes in a `SealedLightActivity`. The lambda is provided an instance of this as a default parameter.
+## Everything a game needs
 
-Since LightOS does not use Android system navigation, we provide a back button for you. As long as you use `navigateTo` to move between screens, our back button should work great. If need be, you can override the `onBackPressed` method in your `LightViewModel`.
+- **Offer a draw**, accept or decline one, or **resign** — from the game actions behind the
+  ellipsis.
+- Checkmate, stalemate, threefold repetition, the fifty-move rule and insufficient material are
+  all recognized, and the game says how it ended.
+- A king in check is marked. The last move can be shaded on the board — every last move, only
+  your opponent's, or none (**Info → Board**).
+- You play under a name like `blueberry764`, so a game reads "blueberry764 vs orange489". Change
+  yours under **Info → Account**.
 
-### Submitting Your Tool
-Given our relatively limited resources and desire to keep our users safe, we're requiring that all community tools be open source (including our own!). 
-Tools are built and signed directly from a publicly available git commit, and we'll be archiving the source at build time.
-You're free to build and share privately, but LightOS won't let you install tools that are not signed by us without acknowledging privacy and performance risks.
-We won't block users from performing these "dangerous" sideloads, but we're not going to encourage it either. 
-Using the Dashboard, developers are able to queue up a build of your tool on our servers, and if it follows our guidelines and compiles cleanly, we will hand you back a signed, shareable APK.
+## Keep the games worth keeping
 
-1. Review the [Tool Guidelines](TOOL_GUIDELINES.md) to get a sense of the kind of tools we're hoping to showcase.
-2. Ensure your tool is built with the latest Light SDK version and is accessible via a public Github repo.
-3. Enable developer mode on the [dashboard](https://dashboard.thelightphone.com/): Settings -> Account -> Developer Account.
-4. From there, you can create your tool: Settings -> Account -> Developer Account -> Manage Custom Tools -> Submit New Tool:
-  - The package name is unique for all tools and can't be changed later. It is pulled from the default branch of the Github repo submitted upon registering the tool.
-  - You'll then have the opportunity to add images. You can add them later on as well, but we'll require at least one for a tool to be approved.
-5. Now go in the tool detail page and press "submit build":
-  - Enter the git ref of the version of the tool to be built and a small description of the changelog.
-  - If your tool already has an active build, you won't be able to submit another.
-  - The `versionCode` of the submitted build should be higher than the one of the last version listed in the Tool page.
-6. Wait for the build to finish:
-  - In case of an error, use the "view details" button on the "Builds" section of the Tool page to check the error message. The "retry build" can be used to re-attempt building from the same git ref if necessary.
-  - If you believe the build error is due to an issue on our end (e.g. with light-sdk or our infrastructure), please feel free to open an Issue on this repo!
-  - In case of success, the "download apk" button should appear. A new "Version" entry will be created with "pending approval" status.
-7. Our team will review the builds and reach out to you via e-mail if we have any feedback regarding the approval process.
-8. If you have any questions, please e-mail us at tools@thelightphone.com
+Finished games go to **Info → Archive**: online games you archive from their game actions, and
+local games you save when they end. Step back through any finished game, move by move, with
+**PREV** and **NEXT**.
 
-### Sharing Your Tool
-Once we release a version of LightOS that supports community tools, users will have an option to choose what kind of tools they want to be able to run on their device:
-- **Light-approved tools**: These include tools that are either built internally by the Light team, or built by the community and officially tested/signed-off by the Light team. We don't know _exactly_ what that sign-off process is going to look like, but as a heads-up: we're going to be looking pretty hard at whether a submitted tool matches the Light ethos both functionally and aesthetically. We've included a UX/UI library to make this as easy as possible! From a technical standpoint, these approved tools are both signed by us _and_ added to an "allow-list" within LightOS. Phones with this option selected will only install and display tools that meet both criteria.
-- **SDK-built tools**: This is a slightly more permissive choice. Phones with this option selected will install and launch any tool that was built and signed by Light. These don't require any manual approval by us (although we can block them in extreme cases). If a user wants to be able to install a tool that was shared locally or somewhere outside of Light's dashboard, but they still want to be confident that it will run well and integrate nicely with LightOS, they might choose this option.
-- **Any tools**: A user will have the option to make any APK launchable from LightOS, but they will own the responsibility of getting them installed/uninstalled. When a user selects this option, we will warn them that they are potentially opening their device up to security risks, and that doing so will limit our ability to support them if something goes wrong.
+<p>
+  <img src="docs/screenshots/archive.png" width="260" alt="The archive: online games first, then local games">
+  <img src="docs/screenshots/local-replay.png" width="260" alt="A saved local game replayed from the archive: white won">
+</p>
 
-## [Complete Documentation](./docs)
+## Your friends don't need a Light Phone
+
+Flamingo Chess is on the App Store, too —
+**[Flamingo Chess for iPhone and iPad](https://apps.apple.com/us/app/checkmate/id6767338427)**,
+which also plays right inside Messages.
+
+Both apps share the same games. Start a game on your Light Phone and send the code to a friend
+with an iPhone: they join it from the Flamingo Chess app, and you play the same game, live, each
+on your own phone. It works the other way round as well — your friend starts a game on their
+iPhone, and you enter their code under **REMOTE → Join by code**.
+
+## Privacy
+
+- No account to create, no sign-up, nothing tracked. Flamingo Chess collects no personal
+  information.
+- Online moves, draw offers and resignations are stored on the Flamingo Chess server so both of
+  you can see the game. Games and their moves are publicly accessible, and so is your display
+  name — don't make it your real name.
+- Local games never leave your phone.
+- Your name is tied to your phone. A new phone starts fresh, with a new name.
+
+The full Terms of Service and Privacy Policy are in **Info**.
+
+## Under the hood
+
+Flamingo Chess is a community tool for LightOS, built on Light's
+[light-sdk](https://github.com/lightphone/light-sdk) and open source like every community tool.
+This repository is a fork of it: Light's modules (`sdk/`, `plugin/`, `lint-rules/`, `builder/`,
+`examples/`) stay as they are upstream, and everything Flamingo Chess lives in [`tool/`](tool):
+
+- `dev.neoneon.flamingo` — the tool itself: its screens, the local game, and the client for the
+  Flamingo Chess server at `neoneon.dev` (HTTP, plus a WebSocket for live moves).
+- `dev.neoneon.chesskit` — the chess engine: board, move legality, and FEN, SAN, LAN and PGN —
+  see [docs/chesskit.md](docs/chesskit.md).
+
+```bash
+./gradlew :tool:test           # unit tests, including the engine's perft suite
+./gradlew :tool:assembleDebug  # a debug APK
+```
+
+Run it on a Light Phone III, or on an Android emulator running Light's LightOS emulator app
+([docs/system_app](docs/system_app)). An emulator that feels like an LPIII is 1080 × 1240, 3.92",
+API 34, without Google Play Services. [CLAUDE.md](CLAUDE.md) has the architecture notes, and
+Light's own guide to building tools is the
+[light-sdk README](https://github.com/lightphone/light-sdk#readme) and [docs](docs).
+
+## License
+
+[MIT](LICENSE).
