@@ -122,7 +122,7 @@ class GameViewViewModel(
      * Whether the notifications pane is on screen, and at which level.
      *
      * Deliberately orthogonal to *what* is pending — that lives in [Promotion] / [DrawOffer] /
-     * [GameOutcome] — so the bell can show and hide the pane without disturbing the decisions
+     * [GameOutcome] — so the ellipsis can show and hide the pane without disturbing the decisions
      * waiting inside it. Modelling the resign confirmation as a level of the pane rather than a
      * flag beside it makes "confirming while the pane is closed" unrepresentable, and gets it
      * dismissed by every path that closes the pane.
@@ -165,8 +165,8 @@ class GameViewViewModel(
         // game is still on.
         val lastMove: Pair<Square, Square>? = null,
         val outcome: GameOutcome? = null,
-        // The bell's toggle. Raised on its own when something lands that needs an answer; closed
-        // by the bell, the pane's back button, or the decision being made.
+        // The ellipsis's toggle. Raised on its own when something lands that needs an answer;
+        // closed by the ellipsis, the pane's back button, or the decision being made.
         val notifications: Notifications = Notifications.Hidden,
         val drawOffer: DrawOffer = DrawOffer.None,
         // Where the player has stepped to in a finished game, and how many positions there are to
@@ -570,7 +570,7 @@ class GameViewViewModel(
                             current.drawOffer
                         },
                         // A promotion needs a piece picked before the move can go out, so put the
-                        // picker up rather than leaving the player to find the bell.
+                        // picker up rather than leaving the player to find the ellipsis.
                         notifications = if (pending != null) Notifications.Shown else current.notifications,
                     )
                 }
@@ -683,7 +683,7 @@ class GameViewViewModel(
         }
     }
 
-    /** The bell: shows the pane, or puts it away again. */
+    /** The ellipsis: shows the pane, or puts it away again. */
     fun toggleNotifications() {
         _state.update {
             it.copy(
@@ -767,7 +767,8 @@ class GameViewViewModel(
         if (!current.canArchive || current.archiveUpdate is ArchiveUpdate.Sending) return
         val playerId = current.playerId ?: return
         val archived = !current.isArchived
-        _state.update { it.copy(archiveUpdate = ArchiveUpdate.Sending) }
+        // Back to the board: success leaves the screen, and a failure is told on the nav bar.
+        _state.update { it.copy(archiveUpdate = ArchiveUpdate.Sending, notifications = Notifications.Hidden) }
         viewModelScope.launch(Dispatchers.IO) {
             api.setArchived(gameId, playerId, archived).fold(
                 onSuccess = { game ->
@@ -942,21 +943,22 @@ private fun ColumnScope.GameContent(
                 LightTopBarCenter.TwoLineDetail(line1 = "Game", line2 = "Waiting for opponent…")
             else -> LightTopBarCenter.Text("Game")
         },
-        // The bar has one right slot and three claims on it. A finished game takes neither button:
-        // there's nothing left to decide, and a game someone resigned out of can still have an
-        // empty seat but no one worth inviting into it. Otherwise the bell and the invite are near
-        // enough mutually exclusive — a draw needs an opponent, and the invite exists precisely
-        // because there isn't one yet. The exception is worth spelling out: white can play, and
-        // promote, before anyone joins, and a pane you can't re-open is a dead end.
+        // The bar has one right slot and three claims on it. A finished game keeps the ellipsis
+        // only for archiving, so only while it can be archived; never the invite, since a game
+        // someone resigned out of can still have an empty seat but no one worth inviting into it.
+        // Otherwise the ellipsis and the invite are near enough mutually exclusive — a draw needs
+        // an opponent, and the invite exists precisely because there isn't one yet. The exception
+        // is worth spelling out: white can play, and promote, before anyone joins, and a pane you
+        // can't re-open is a dead end.
         rightButton = when {
-            state.isLoading || outcome != null -> null
-            state.hasPendingNotification || !state.hasOpenSeat -> LightBarButton.LightIcon(
-                icon = LightIcons.ALARM,
+            state.isLoading || (outcome != null && !state.canArchive) -> null
+            outcome != null || state.hasPendingNotification || !state.hasOpenSeat -> LightBarButton.LightIcon(
+                icon = LightIcons.ELLIPSES,
                 onClick = actions.onToggleNotifications,
                 contentDescription = if (state.promotion is GameViewViewModel.Promotion.Pending) {
                     "Finish promotion"
                 } else {
-                    "Notifications"
+                    "Game actions"
                 },
             )
             else -> LightBarButton.LightIcon(
@@ -1009,19 +1011,14 @@ private fun ColumnScope.GameContent(
     }
 
     // A finished game has nothing to decide and no turn to wait for, so the bar the live game
-    // never uses is free to step through it, with archiving between the two steps. The label sits
-    // on the buttons' own row rather than taking height from the board. A button with nowhere to
-    // go is left as an empty slot, so the others stay where they were.
-    val archiveButton = LightBarButton.Text(
-        text = if (state.isArchived) "UNARCHIVE" else "ARCHIVE",
-        onClick = actions.onToggleArchived,
-    ).takeIf { state.canArchive }
-    if (state.canReplay || archiveButton != null) {
+    // never uses is free to step through it. The label sits on the buttons' own row rather than
+    // taking height from the board. A button with nowhere to go is left as an empty slot, so the
+    // other one stays where it was.
+    if (state.canReplay) {
         LightBottomBar(
             items = listOf(
                 LightBarButton.Text(text = "PREV", onClick = { actions.onStepReplay(false) })
                     .takeIf { state.canStepBack },
-                archiveButton,
                 LightBarButton.Text(text = "NEXT", onClick = { actions.onStepReplay(true) })
                     .takeIf { state.canStepForward },
             ),
@@ -1054,7 +1051,7 @@ private fun ColumnScope.SharePane(share: GameViewViewModel.Share, onClose: () ->
 }
 
 /**
- * The one pane the bell opens: whatever is currently waiting on the player.
+ * The one pane the ellipsis opens: whatever is currently waiting on the player.
  *
  * A pending promotion outranks a draw offer — it's holding back a move of ours — and both
  * outrank the idle offer-draw / resign actions. Always dismissible; see [GameViewViewModel.Promotion]
@@ -1134,6 +1131,11 @@ private fun ColumnScope.ActionOptions(
     ) {
         ActionRow(label = "Offer draw", enabled = state.canOfferDraw, onClick = actions.onOfferDraw)
         ActionRow(label = "Resign", enabled = state.canResign, onClick = actions.onRequestResign)
+        ActionRow(
+            label = if (state.isArchived) "Unarchive" else "Archive",
+            enabled = state.canArchive && state.archiveUpdate !is GameViewViewModel.ArchiveUpdate.Sending,
+            onClick = actions.onToggleArchived,
+        )
     }
 }
 
@@ -1238,7 +1240,7 @@ private fun PreviewGameViewPromoting(
     GameScreen(state = promotingState(), colors = colors)
 }
 
-// The same promotion with the pane put away — the state the bell makes reachable. Worth its own
+// The same promotion with the pane put away — the state the ellipsis makes reachable. Worth its own
 // preview: it's the one place the board shows a pawn sitting unpromoted on the last rank, and the
 // nav bar has to say why rather than claiming we're waiting on the opponent.
 @Preview(widthDp = 1080 / 3, heightDp = 1240 / 3, showBackground = true)
@@ -1267,7 +1269,8 @@ private fun PreviewGameViewDrawOffered(
     )
 }
 
-// The pane as the bell opens it with nothing pending: the two actions the player can start.
+// The pane as the ellipsis opens it with nothing pending: the actions the player can start, with
+// archiving greyed until the game is over.
 @Preview(widthDp = 1080 / 3, heightDp = 1240 / 3, showBackground = true)
 @Composable
 private fun PreviewGameViewActions(
@@ -1327,13 +1330,28 @@ private fun PreviewGameViewCheckmated(
     GameScreen(state = matedState(), colors = colors)
 }
 
-// The same game opened from the archive: the bar's middle button takes it back out.
+// The ellipsis on a finished game: draw and resign are over, archiving is what is left.
+@Preview(widthDp = 1080 / 3, heightDp = 1240 / 3, showBackground = true)
+@Composable
+private fun PreviewGameViewCheckmatedActions(
+    @PreviewParameter(LightColorsPreviewProvider::class) colors: LightColors,
+) {
+    GameScreen(
+        state = matedState().copy(notifications = GameViewViewModel.Notifications.Shown),
+        colors = colors,
+    )
+}
+
+// The same game opened from the archive: the pane offers to take it back out.
 @Preview(widthDp = 1080 / 3, heightDp = 1240 / 3, showBackground = true)
 @Composable
 private fun PreviewGameViewCheckmatedArchived(
     @PreviewParameter(LightColorsPreviewProvider::class) colors: LightColors,
 ) {
-    GameScreen(state = matedState().copy(isArchived = true), colors = colors)
+    GameScreen(
+        state = matedState().copy(isArchived = true, notifications = GameViewViewModel.Notifications.Shown),
+        colors = colors,
+    )
 }
 
 // The same presentation for a game someone resigned, where the board itself gives nothing away.

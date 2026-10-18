@@ -195,7 +195,7 @@ private fun OnlineGames(online: OnlineArchive, onOpen: (Game) -> Unit) {
         is OnlineArchive.Unavailable -> SectionNote(online.message.title)
         is OnlineArchive.Failed -> SectionNote(online.message)
         is OnlineArchive.Loaded -> if (online.games.isEmpty()) {
-            SectionNote("No archived online games. Archive a finished game from the bar below its board.")
+            SectionNote("No archived online games. Archive a finished game from its game actions.")
         } else {
             online.games.forEach { game ->
                 // The same row as the games list, so a game reads the same in both.
@@ -286,8 +286,7 @@ private fun ColumnScope.EmptyArchiveNote() {
             modifier = Modifier.fillMaxWidth(),
         )
         LightText(
-            text = "Archive a finished game from the bar below its board, or save a finished " +
-                "local game from its game actions.",
+            text = "Archive a finished game, online or local, from its game actions.",
             variant = LightTextVariant.Copy,
             align = TextAlign.Center,
             modifier = Modifier

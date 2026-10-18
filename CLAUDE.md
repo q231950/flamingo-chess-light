@@ -137,8 +137,10 @@ first, then local ones.
   lists it (the live list sends `archived=false`), `POST /flamingo/games/:id/archive` moves a game
   in or out (`FlamingoApi.setArchived`). The opponent's lists never change. Read our flag through
   `Game.isArchivedBy`, which compares with `samePlayer`.
-- A finished game's bottom bar has **ARCHIVE** / **UNARCHIVE** between PREV and NEXT (`GameView`).
-  On success the screen goes back to the list it came from, which reloads on show.
+- **Archive** / **Unarchive** is the last row of the game's actions pane, behind the ellipsis at the
+  top right (`GameView`; the ellipsis replaced the alarm-clock icon). It is greyed while the game is
+  on, and a finished game keeps the ellipsis only while it can be archived. On success the screen
+  goes back to the list it came from, which reloads on show.
 - Offered only for endings the server holds as finished (`GameOutcome.isRecordedByServer`): mate,
   stalemate, resignation, agreed draw. Repetition, fifty-move and too-few-pieces draws are found by
   chesskit alone and stay `active` on the server, which refuses to archive them (409).
