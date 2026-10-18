@@ -11,32 +11,62 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
-import com.thelightphone.sdk.ui.LightText
-import com.thelightphone.sdk.ui.LightTextVariant
 import com.thelightphone.sdk.ui.LightThemeTokens
 import com.thelightphone.sdk.ui.designVerticalPxToDp
+import com.thelightphone.sdk.ui.designVerticalPxToSp
 import dev.neoneon.chesskit.Board
 import dev.neoneon.chesskit.Piece
 import dev.neoneon.chesskit.Position
 import dev.neoneon.chesskit.Square
+import kotlin.math.sqrt
 
 // Same weight as the SDK's active code-input underline, so the check marker reads as a line
 // rather than a hairline (see LightCodeInput's ACTIVE_UNDERLINE_THICKNESS_PX).
 private const val CHECK_UNDERLINE_THICKNESS_PX = 7f
 private const val CHECK_UNDERLINE_DURATION_MS = 220
 
-// The last-move shade, as the square's background alpha. Each sits clearly above its plain
-// counterpart (dark 0.12, light 0.03) and below a selection (0.35), the way iOS lays a translucent
+// The board is an old newspaper diagram whatever the LightOS theme: black ink on almost-white
+// newsprint, light squares bare and dark squares hatched. The paper is a neutral grey rather than
+// the warm #F4EFE2 of iOS's newspaper-pieces preview, because LightOS is monochrome.
+internal val NEWSPRINT_PAPER = Color(0xFFF2F2F2)
+internal val NEWSPRINT_INK = Color.Black
+
+// Dark-square hatching: "/" strokes, bottom-left to top-right as iOS's SquareView draws them.
+// A whole number of strokes per square edge puts one through every corner, so the hatching runs on
+// unbroken from one dark square into the next along a diagonal. Ink covers a quarter of the
+// square, as in iOS's preview (1px of ink in every 4px, measured across the strokes).
+private const val HATCH_STROKES_PER_SQUARE = 10
+private const val HATCH_INK_COVERAGE = 0.25f
+
+// The paper halo around a piece on a hatched square — the gap the old diagram blocks left so the
+// hatching stops short of the piece's outline instead of running into it. A stroke of the piece's
+// silhouette, as a share of the glyph's font size; half of it shows outside the silhouette.
+private const val PIECE_HALO_STROKE_SHARE = 0.12f
+
+// The last-move shade, as the alpha of the ink laid over a square's newsprint. Each sits clearly
+// above a plain square (bare paper, 0) and below a selection (0.35), the way iOS lays a translucent
 // fill over the from- and to-squares — a whole square is legible at a glance on the LPIII's
-// screen, where an earlier dot-and-arrow marker was too small to notice.
+// screen, where an earlier dot-and-arrow marker was too small to notice. The dark square's shade
+// is the deeper one, as it was before the hatching took over from a flat grey.
 private const val LAST_MOVE_DARK_ALPHA = 0.28f
 private const val LAST_MOVE_LIGHT_ALPHA = 0.18f
 
@@ -65,6 +95,10 @@ internal fun checkedKingSquare(state: Board.State, position: Position): Square? 
 
 /**
  * Interactive chess board rendering a chesskit [Position] with tap-to-select/tap-to-move squares.
+ *
+ * It's drawn as a newspaper diagram in either LightOS theme — ink on newsprint, dark squares
+ * hatched — so nothing on it uses the theme's colors: white pieces are paper with an ink outline,
+ * black pieces solid ink.
  *
  * [orientation] is the local player's color: their pieces sit at the bottom, so a black
  * player sees the board flipped (rank 1 on top, files h→a left-to-right).
@@ -131,8 +165,9 @@ internal fun boardRankOrder(orientation: Piece.Color): List<Int> =
     (if (orientation == Piece.Color.black) (1..8) else (8 downTo 1)).toList()
 
 /**
- * The background alpha of a square: a selection first, then a legal target, then the last move's
- * shade, then the square's plain color. Pulled out of [ChessSquare] so the precedence is testable.
+ * The alpha of the ink laid over a square's newsprint, under any hatching: a selection first, then
+ * a legal target, then the last move's shade. A plain square is bare paper — a dark one is told
+ * apart by its hatching, not by a tint. Pulled out of [ChessSquare] so the precedence is testable.
  */
 internal fun squareBackgroundAlpha(
     isDark: Boolean,
@@ -143,8 +178,32 @@ internal fun squareBackgroundAlpha(
     isSelected -> 0.35f
     isLegalTarget -> 0.25f
     isLastMoveSquare -> if (isDark) LAST_MOVE_DARK_ALPHA else LAST_MOVE_LIGHT_ALPHA
-    isDark -> 0.12f
-    else -> 0.03f
+    else -> 0f
+}
+
+/** A square's ground: its ink shade (see [squareBackgroundAlpha]) over the newsprint. */
+internal fun squareGround(backgroundAlpha: Float): Color =
+    NEWSPRINT_INK.copy(alpha = backgroundAlpha).compositeOver(NEWSPRINT_PAPER)
+
+/**
+ * Hatches a dark square in ink, over whatever its background already drew. The strokes start a
+ * full square to the left so they reach the bottom-right corner too; the clip trims the overhang.
+ */
+private fun Modifier.newspaperHatch(): Modifier = drawWithCache {
+    val spacing = size.width / HATCH_STROKES_PER_SQUARE
+    val strokes = Path().apply {
+        var x = -size.height
+        while (x < size.width) {
+            moveTo(x, size.height)
+            lineTo(x + size.height, 0f)
+            x += spacing
+        }
+    }
+    // At 45° the strokes repeat every spacing/√2 measured across them.
+    val stroke = Stroke(width = spacing / sqrt(2f) * HATCH_INK_COVERAGE)
+    onDrawBehind {
+        clipRect { drawPath(strokes, NEWSPRINT_INK, style = stroke) }
+    }
 }
 
 @Composable
@@ -159,8 +218,7 @@ private fun ChessSquare(
     squareSize: Dp,
     onTap: () -> Unit,
 ) {
-    val content = LightThemeTokens.colors.content
-    val backgroundAlpha = squareBackgroundAlpha(isDark, isSelected, isLegalTarget, isLastMoveSquare)
+    val ground = squareGround(squareBackgroundAlpha(isDark, isSelected, isLegalTarget, isLastMoveSquare))
 
     // The check line draws in from this square's left edge to its right edge — screen-left to
     // screen-right, so it looks the same however the board is oriented. At 0f there's nothing to
@@ -180,17 +238,14 @@ private fun ChessSquare(
     Box(
         modifier = Modifier
             .size(squareSize)
-            .background(content.copy(alpha = backgroundAlpha))
+            .background(ground)
+            .then(if (isDark) Modifier.newspaperHatch() else Modifier)
             .clickable(onClick = onTap)
             .then(markerSemantics),
         contentAlignment = Alignment.Center,
     ) {
         if (piece != null) {
-            LightText(
-                text = piece.copy(color = piece.color.opposite).graphic,
-                variant = LightTextVariant.Heading,
-                align = TextAlign.Center,
-            )
+            NewspaperPieceGlyph(piece = piece, haloColor = ground.takeIf { isDark })
         }
         if (checkProgress > 0f) {
             Box(
@@ -198,8 +253,60 @@ private fun ChessSquare(
                     .align(Alignment.BottomStart)
                     .fillMaxWidth(checkProgress)
                     .height(CHECK_UNDERLINE_THICKNESS_PX.designVerticalPxToDp())
-                    .background(content),
+                    .background(NEWSPRINT_INK),
             )
         }
     }
+}
+
+/**
+ * [piece]'s glyph as a newspaper diagram prints it: a white piece is the outline glyph in ink over
+ * the solid one in paper, so the square's hatching can't show through it; a black piece is the
+ * solid glyph in ink.
+ *
+ * [haloColor], given on a hatched square, rings the piece in the square's own ground, so the
+ * hatching stops short of its outline — the paper halo iOS's newspaper-pieces preview gives a piece
+ * on a dark square. The ground rather than bare paper, so the halo doesn't cut a ring through a
+ * selection or last-move shade.
+ */
+@Composable
+private fun NewspaperPieceGlyph(piece: Piece, haloColor: Color?) {
+    val style = pieceGlyphStyle()
+    val solid = piece.copy(color = Piece.Color.black).graphic
+    Box(contentAlignment = Alignment.Center) {
+        if (haloColor != null) {
+            val haloWidth = with(LocalDensity.current) { style.fontSize.toPx() } * PIECE_HALO_STROKE_SHARE
+            BasicText(
+                text = solid,
+                modifier = Modifier.clearAndSetSemantics {},
+                style = style.copy(
+                    color = haloColor,
+                    drawStyle = Stroke(width = haloWidth, join = StrokeJoin.Round),
+                ),
+            )
+        }
+        if (piece.color == Piece.Color.white) {
+            BasicText(
+                text = solid,
+                modifier = Modifier.clearAndSetSemantics {},
+                style = style.copy(color = NEWSPRINT_PAPER),
+            )
+        }
+        BasicText(text = piece.graphic, style = style.copy(color = NEWSPRINT_INK))
+    }
+}
+
+/**
+ * LightText's Heading — the size the board's glyphs have always had — for [BasicText], which the
+ * piece's layers need so they can carry a stroke and land on exactly the same spot. Scaled for the
+ * screen's height as LightText scales it; the SDK keeps its own helper for that internal.
+ */
+@Composable
+private fun pieceGlyphStyle(): TextStyle {
+    val heading = LightThemeTokens.typography.heading
+    return heading.copy(
+        fontSize = heading.fontSize.value.designVerticalPxToSp(),
+        lineHeight = heading.lineHeight.value.designVerticalPxToSp(),
+        textAlign = TextAlign.Center,
+    )
 }
