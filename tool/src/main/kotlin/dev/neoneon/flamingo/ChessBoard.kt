@@ -71,9 +71,9 @@ private const val PIECE_HALO_STROKE_SHARE = 0.12f
 // rather than staying at a text size that left them small in their squares.
 private const val PIECE_GLYPH_SQUARE_SHARE = 0.70f
 
-// How far a piece glyph is lifted, as a share of its square's side. The chess glyphs stand on the
-// font's baseline, so a centered text box leaves them sitting low in the square.
-private const val PIECE_GLYPH_LIFT_SHARE = 0.08f
+// How far a piece glyph is moved down from the middle of its square, as a share of the square's
+// side. Set by eye on the board.
+private const val PIECE_GLYPH_DROP_SHARE = 0.02f
 
 // The last-move shade, as the alpha of the ink laid over a square's newsprint. Each sits clearly
 // above a plain square (bare paper, 0), the way iOS lays a translucent fill over the from- and
@@ -83,10 +83,12 @@ private const val PIECE_GLYPH_LIFT_SHARE = 0.08f
 private const val LAST_MOVE_DARK_ALPHA = 0.28f
 private const val LAST_MOVE_LIGHT_ALPHA = 0.18f
 
-// A selection and its legal targets are marked in ink rather than shaded, so they never read as the
-// last move's shade: a frame inside the selected square, a dot on an empty target, solid corners on
-// a capture. Sizes are shares of a square's side. A dot on a hatched square is cased in the
-// square's ground, so the hatching stops short of it as it does of a piece.
+// A selection and its legal targets are marked rather than shaded, so they never read as the last
+// move's shade: an ink frame inside the selected square, a dot on an empty target, solid corners on
+// a capture. The targets are light grey, so they sit back behind the pieces and the selection.
+// Sizes are shares of a square's side. A dot on a hatched square is cased in the square's ground,
+// so the hatching stops short of it as it does of a piece.
+private val TARGET_MARK_GREY = Color(0xFFB4B4B4)
 private const val SELECTION_FRAME_STROKE_SHARE = 0.07f
 private const val TARGET_DOT_DIAMETER_SHARE = 0.30f
 private const val TARGET_DOT_CASING_SHARE = 0.05f
@@ -133,7 +135,7 @@ internal fun checkedKingSquare(state: Board.State, position: Position): Square? 
  * square, drawing in from its left edge to its right. Callers derive it from their board with the
  * `checkedKingSquare` function above.
  *
- * [selectedSquare] is framed in ink, and each of [legalTargets] carries an ink dot — or ink corners,
+ * [selectedSquare] is framed in ink, and each of [legalTargets] carries a light grey dot — or corners,
  * when it holds a piece to capture. Marks rather than shades, so they never read as [lastMove]'s.
  *
  * [lastMove] shades the move's origin and destination squares a step darker than their plain
@@ -227,7 +229,7 @@ private fun Modifier.newspaperHatch(): Modifier = drawWithCache {
 }
 
 /**
- * Marks a selected square or a legal target in ink, over its ground and hatching and under its
+ * Marks a selected square or a legal target, over its ground and hatching and under its
  * piece. [ground] cases an empty target's dot.
  */
 private fun Modifier.selectionMarks(
@@ -253,14 +255,14 @@ private fun DrawScope.drawSelectionFrame() {
     )
 }
 
-/** A solid ink dot at the square's middle, ringed in [ground] so a hatched square's strokes stop short. */
+/** A solid light grey dot at the square's middle, ringed in [ground] so a hatched square's strokes stop short. */
 private fun DrawScope.drawTargetDot(ground: Color) {
     val radius = size.minDimension * TARGET_DOT_DIAMETER_SHARE / 2
     drawCircle(ground, radius + size.minDimension * TARGET_DOT_CASING_SHARE)
-    drawCircle(NEWSPRINT_INK, radius)
+    drawCircle(TARGET_MARK_GREY, radius)
 }
 
-/** Solid ink triangles in the square's four corners, which a piece never reaches. */
+/** Solid light grey triangles in the square's four corners, which a piece never reaches. */
 private fun DrawScope.drawCaptureCorners() {
     val leg = size.minDimension * CAPTURE_CORNER_LEG_SHARE
     val corners = Path().apply {
@@ -273,7 +275,7 @@ private fun DrawScope.drawCaptureCorners() {
             }
         }
     }
-    drawPath(corners, NEWSPRINT_INK)
+    drawPath(corners, TARGET_MARK_GREY)
 }
 
 @Composable
@@ -340,15 +342,15 @@ private fun ChessSquare(
  * on a dark square. The ground rather than bare paper, so the halo doesn't cut a ring through a
  * last-move shade.
  *
- * The glyph is sized from [squareSize] (see [pieceGlyphStyle]) and lifted by
- * [PIECE_GLYPH_LIFT_SHARE] of it, so its ink rather than its text box sits at the square's middle.
+ * The glyph is sized from [squareSize] (see [pieceGlyphStyle]) and moved down by
+ * [PIECE_GLYPH_DROP_SHARE] of it.
  */
 @Composable
 private fun NewspaperPieceGlyph(piece: Piece, haloColor: Color?, squareSize: Dp) {
     val style = pieceGlyphStyle(squareSize)
     val solid = piece.copy(color = Piece.Color.black).graphic
     Box(
-        modifier = Modifier.offset(y = -squareSize * PIECE_GLYPH_LIFT_SHARE),
+        modifier = Modifier.offset(y = squareSize * PIECE_GLYPH_DROP_SHARE),
         contentAlignment = Alignment.Center,
     ) {
         if (haloColor != null) {
