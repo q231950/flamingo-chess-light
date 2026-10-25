@@ -7,12 +7,8 @@ import kotlin.test.assertTrue
 
 class LastMoveShadingTest {
 
-    private fun alpha(
-        isDark: Boolean,
-        isSelected: Boolean = false,
-        isLegalTarget: Boolean = false,
-        isLastMoveSquare: Boolean = false,
-    ) = squareBackgroundAlpha(isDark, isSelected, isLegalTarget, isLastMoveSquare)
+    private fun alpha(isDark: Boolean, isLastMoveSquare: Boolean = false) =
+        squareBackgroundAlpha(isDark, isLastMoveSquare)
 
     @Test
     fun aPlainSquareIsBareNewsprint() {
@@ -26,13 +22,8 @@ class LastMoveShadingTest {
     @Test
     fun aShadedSquareIsDarkerNewsprint() {
         val plain = squareGround(alpha(isDark = false)).luminance()
-        for (shaded in listOf(
-            alpha(isDark = false, isLastMoveSquare = true),
-            alpha(isDark = true, isLastMoveSquare = true),
-            alpha(isDark = false, isLegalTarget = true),
-            alpha(isDark = false, isSelected = true),
-        )) {
-            assertTrue(squareGround(shaded).luminance() < plain)
+        for (isDark in listOf(true, false)) {
+            assertTrue(squareGround(alpha(isDark, isLastMoveSquare = true)).luminance() < plain)
         }
     }
 
@@ -46,16 +37,5 @@ class LastMoveShadingTest {
     @Test
     fun aLastMoveSquareStaysDistinctBetweenLightAndDark() {
         assertTrue(alpha(isDark = true, isLastMoveSquare = true) > alpha(isDark = false, isLastMoveSquare = true))
-    }
-
-    @Test
-    fun selectionAndLegalTargetsOutrankTheLastMoveShade() {
-        for (isDark in listOf(true, false)) {
-            assertEquals(alpha(isDark, isSelected = true), alpha(isDark, isSelected = true, isLastMoveSquare = true))
-            assertEquals(
-                alpha(isDark, isLegalTarget = true),
-                alpha(isDark, isLegalTarget = true, isLastMoveSquare = true),
-            )
-        }
     }
 }

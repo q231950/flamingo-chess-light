@@ -4,7 +4,6 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,11 +16,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.platform.LocalDensity
@@ -34,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import com.thelightphone.sdk.ui.LightThemeTokens
 import com.thelightphone.sdk.ui.designVerticalPxToDp
+import com.thelightphone.sdk.ui.lightClickable
 import dev.neoneon.chesskit.Board
 import dev.neoneon.chesskit.Piece
 import dev.neoneon.chesskit.Position
@@ -65,19 +69,28 @@ private const val PIECE_HALO_STROKE_SHARE = 0.12f
 
 // A piece glyph's font size, as a share of its square's side, so the pieces grow with the board
 // rather than staying at a text size that left them small in their squares.
-private const val PIECE_GLYPH_SQUARE_SHARE = 0.85f
+private const val PIECE_GLYPH_SQUARE_SHARE = 0.70f
 
 // How far a piece glyph is lifted, as a share of its square's side. The chess glyphs stand on the
 // font's baseline, so a centered text box leaves them sitting low in the square.
 private const val PIECE_GLYPH_LIFT_SHARE = 0.08f
 
 // The last-move shade, as the alpha of the ink laid over a square's newsprint. Each sits clearly
-// above a plain square (bare paper, 0) and below a selection (0.35), the way iOS lays a translucent
-// fill over the from- and to-squares — a whole square is legible at a glance on the LPIII's
-// screen, where an earlier dot-and-arrow marker was too small to notice. The dark square's shade
-// is the deeper one, as it was before the hatching took over from a flat grey.
+// above a plain square (bare paper, 0), the way iOS lays a translucent fill over the from- and
+// to-squares — a whole square is legible at a glance on the LPIII's screen, where an earlier
+// dot-and-arrow marker was too small to notice. The dark square's shade is the deeper one, as it
+// was before the hatching took over from a flat grey.
 private const val LAST_MOVE_DARK_ALPHA = 0.28f
 private const val LAST_MOVE_LIGHT_ALPHA = 0.18f
+
+// A selection and its legal targets are marked in ink rather than shaded, so they never read as the
+// last move's shade: a frame inside the selected square, a dot on an empty target, solid corners on
+// a capture. Sizes are shares of a square's side. A dot on a hatched square is cased in the
+// square's ground, so the hatching stops short of it as it does of a piece.
+private const val SELECTION_FRAME_STROKE_SHARE = 0.07f
+private const val TARGET_DOT_DIAMETER_SHARE = 0.30f
+private const val TARGET_DOT_CASING_SHARE = 0.05f
+private const val CAPTURE_CORNER_LEG_SHARE = 0.26f
 
 /**
  * The square holding the king that [state] reports as being in check, or `null` if neither is.
@@ -119,6 +132,9 @@ internal fun checkedKingSquare(state: Board.State, position: Position): Square? 
  * [checkedKingSquare] marks the king that's in check with a line along the bottom edge of that one
  * square, drawing in from its left edge to its right. Callers derive it from their board with the
  * `checkedKingSquare` function above.
+ *
+ * [selectedSquare] is framed in ink, and each of [legalTargets] carries an ink dot — or ink corners,
+ * when it holds a piece to capture. Marks rather than shades, so they never read as [lastMove]'s.
  *
  * [lastMove] shades the move's origin and destination squares a step darker than their plain
  * color, as iOS does. Always shown for the move a finished game ended on (or, mid-replay, whichever
@@ -174,20 +190,15 @@ internal fun boardRankOrder(orientation: Piece.Color): List<Int> =
     (if (orientation == Piece.Color.black) (1..8) else (8 downTo 1)).toList()
 
 /**
- * The alpha of the ink laid over a square's newsprint, under any hatching: a selection first, then
- * a legal target, then the last move's shade. A plain square is bare paper — a dark one is told
- * apart by its hatching, not by a tint. Pulled out of [ChessSquare] so the precedence is testable.
+ * The alpha of the ink laid over a square's newsprint, under any hatching: the last move's shade,
+ * or none. A plain square is bare paper — a dark one is told apart by its hatching, not by a tint —
+ * and a selection or legal target isn't shaded either; it's marked in ink on top (see
+ * [selectionMarks]). Pulled out of [ChessSquare] so the shades are testable.
  */
-internal fun squareBackgroundAlpha(
-    isDark: Boolean,
-    isSelected: Boolean,
-    isLegalTarget: Boolean,
-    isLastMoveSquare: Boolean,
-): Float = when {
-    isSelected -> 0.35f
-    isLegalTarget -> 0.25f
-    isLastMoveSquare -> if (isDark) LAST_MOVE_DARK_ALPHA else LAST_MOVE_LIGHT_ALPHA
-    else -> 0f
+internal fun squareBackgroundAlpha(isDark: Boolean, isLastMoveSquare: Boolean): Float = when {
+    !isLastMoveSquare -> 0f
+    isDark -> LAST_MOVE_DARK_ALPHA
+    else -> LAST_MOVE_LIGHT_ALPHA
 }
 
 /** A square's ground: its ink shade (see [squareBackgroundAlpha]) over the newsprint. */
@@ -215,6 +226,56 @@ private fun Modifier.newspaperHatch(): Modifier = drawWithCache {
     }
 }
 
+/**
+ * Marks a selected square or a legal target in ink, over its ground and hatching and under its
+ * piece. [ground] cases an empty target's dot.
+ */
+private fun Modifier.selectionMarks(
+    isSelected: Boolean,
+    isLegalTarget: Boolean,
+    isCapture: Boolean,
+    ground: Color,
+): Modifier = when {
+    isSelected -> drawBehind { drawSelectionFrame() }
+    isLegalTarget && isCapture -> drawBehind { drawCaptureCorners() }
+    isLegalTarget -> drawBehind { drawTargetDot(ground) }
+    else -> this
+}
+
+/** A heavy ink frame just inside the square's edges. */
+private fun DrawScope.drawSelectionFrame() {
+    val width = size.minDimension * SELECTION_FRAME_STROKE_SHARE
+    drawRect(
+        NEWSPRINT_INK,
+        topLeft = Offset(width / 2, width / 2),
+        size = Size(size.width - width, size.height - width),
+        style = Stroke(width),
+    )
+}
+
+/** A solid ink dot at the square's middle, ringed in [ground] so a hatched square's strokes stop short. */
+private fun DrawScope.drawTargetDot(ground: Color) {
+    val radius = size.minDimension * TARGET_DOT_DIAMETER_SHARE / 2
+    drawCircle(ground, radius + size.minDimension * TARGET_DOT_CASING_SHARE)
+    drawCircle(NEWSPRINT_INK, radius)
+}
+
+/** Solid ink triangles in the square's four corners, which a piece never reaches. */
+private fun DrawScope.drawCaptureCorners() {
+    val leg = size.minDimension * CAPTURE_CORNER_LEG_SHARE
+    val corners = Path().apply {
+        for ((x, dx) in listOf(0f to 1f, size.width to -1f)) {
+            for ((y, dy) in listOf(0f to 1f, size.height to -1f)) {
+                moveTo(x, y)
+                lineTo(x + dx * leg, y)
+                lineTo(x, y + dy * leg)
+                close()
+            }
+        }
+    }
+    drawPath(corners, NEWSPRINT_INK)
+}
+
 @Composable
 private fun ChessSquare(
     piece: Piece?,
@@ -227,7 +288,7 @@ private fun ChessSquare(
     squareSize: Dp,
     onTap: () -> Unit,
 ) {
-    val ground = squareGround(squareBackgroundAlpha(isDark, isSelected, isLegalTarget, isLastMoveSquare))
+    val ground = squareGround(squareBackgroundAlpha(isDark, isLastMoveSquare))
 
     // The check line draws in from this square's left edge to its right edge — screen-left to
     // screen-right, so it looks the same however the board is oriented. At 0f there's nothing to
@@ -249,7 +310,8 @@ private fun ChessSquare(
             .size(squareSize)
             .background(ground)
             .then(if (isDark) Modifier.newspaperHatch() else Modifier)
-            .clickable(onClick = onTap)
+            .selectionMarks(isSelected, isLegalTarget, isCapture = piece != null, ground = ground)
+            .lightClickable(onClick = onTap)
             .then(markerSemantics),
         contentAlignment = Alignment.Center,
     ) {
@@ -276,7 +338,7 @@ private fun ChessSquare(
  * [haloColor], given on a hatched square, rings the piece in the square's own ground, so the
  * hatching stops short of its outline — the paper halo iOS's newspaper-pieces preview gives a piece
  * on a dark square. The ground rather than bare paper, so the halo doesn't cut a ring through a
- * selection or last-move shade.
+ * last-move shade.
  *
  * The glyph is sized from [squareSize] (see [pieceGlyphStyle]) and lifted by
  * [PIECE_GLYPH_LIFT_SHARE] of it, so its ink rather than its text box sits at the square's middle.
