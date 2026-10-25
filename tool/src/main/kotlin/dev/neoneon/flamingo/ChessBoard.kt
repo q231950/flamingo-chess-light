@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -27,12 +28,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import com.thelightphone.sdk.ui.LightThemeTokens
 import com.thelightphone.sdk.ui.designVerticalPxToDp
-import com.thelightphone.sdk.ui.designVerticalPxToSp
 import dev.neoneon.chesskit.Board
 import dev.neoneon.chesskit.Piece
 import dev.neoneon.chesskit.Position
@@ -61,6 +62,14 @@ private const val HATCH_INK_COVERAGE = 0.25f
 // hatching stops short of the piece's outline instead of running into it. A stroke of the piece's
 // silhouette, as a share of the glyph's font size; half of it shows outside the silhouette.
 private const val PIECE_HALO_STROKE_SHARE = 0.12f
+
+// A piece glyph's font size, as a share of its square's side, so the pieces grow with the board
+// rather than staying at a text size that left them small in their squares.
+private const val PIECE_GLYPH_SQUARE_SHARE = 0.85f
+
+// How far a piece glyph is lifted, as a share of its square's side. The chess glyphs stand on the
+// font's baseline, so a centered text box leaves them sitting low in the square.
+private const val PIECE_GLYPH_LIFT_SHARE = 0.08f
 
 // The last-move shade, as the alpha of the ink laid over a square's newsprint. Each sits clearly
 // above a plain square (bare paper, 0) and below a selection (0.35), the way iOS lays a translucent
@@ -245,7 +254,7 @@ private fun ChessSquare(
         contentAlignment = Alignment.Center,
     ) {
         if (piece != null) {
-            NewspaperPieceGlyph(piece = piece, haloColor = ground.takeIf { isDark })
+            NewspaperPieceGlyph(piece = piece, haloColor = ground.takeIf { isDark }, squareSize = squareSize)
         }
         if (checkProgress > 0f) {
             Box(
@@ -268,12 +277,18 @@ private fun ChessSquare(
  * hatching stops short of its outline — the paper halo iOS's newspaper-pieces preview gives a piece
  * on a dark square. The ground rather than bare paper, so the halo doesn't cut a ring through a
  * selection or last-move shade.
+ *
+ * The glyph is sized from [squareSize] (see [pieceGlyphStyle]) and lifted by
+ * [PIECE_GLYPH_LIFT_SHARE] of it, so its ink rather than its text box sits at the square's middle.
  */
 @Composable
-private fun NewspaperPieceGlyph(piece: Piece, haloColor: Color?) {
-    val style = pieceGlyphStyle()
+private fun NewspaperPieceGlyph(piece: Piece, haloColor: Color?, squareSize: Dp) {
+    val style = pieceGlyphStyle(squareSize)
     val solid = piece.copy(color = Piece.Color.black).graphic
-    Box(contentAlignment = Alignment.Center) {
+    Box(
+        modifier = Modifier.offset(y = -squareSize * PIECE_GLYPH_LIFT_SHARE),
+        contentAlignment = Alignment.Center,
+    ) {
         if (haloColor != null) {
             val haloWidth = with(LocalDensity.current) { style.fontSize.toPx() } * PIECE_HALO_STROKE_SHARE
             BasicText(
@@ -297,16 +312,18 @@ private fun NewspaperPieceGlyph(piece: Piece, haloColor: Color?) {
 }
 
 /**
- * LightText's Heading — the size the board's glyphs have always had — for [BasicText], which the
- * piece's layers need so they can carry a stroke and land on exactly the same spot. Scaled for the
- * screen's height as LightText scales it; the SDK keeps its own helper for that internal.
+ * LightText's Heading face for [BasicText], which the piece's layers need so they can carry a
+ * stroke and land on exactly the same spot, at a font size that's [PIECE_GLYPH_SQUARE_SHARE] of
+ * [squareSize]. The line height is the font size and there's no font padding, so the text box
+ * never outgrows the square.
  */
 @Composable
-private fun pieceGlyphStyle(): TextStyle {
-    val heading = LightThemeTokens.typography.heading
-    return heading.copy(
-        fontSize = heading.fontSize.value.designVerticalPxToSp(),
-        lineHeight = heading.lineHeight.value.designVerticalPxToSp(),
+private fun pieceGlyphStyle(squareSize: Dp): TextStyle {
+    val fontSize = with(LocalDensity.current) { (squareSize * PIECE_GLYPH_SQUARE_SHARE).toSp() }
+    return LightThemeTokens.typography.heading.copy(
+        fontSize = fontSize,
+        lineHeight = fontSize,
         textAlign = TextAlign.Center,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
     )
 }
