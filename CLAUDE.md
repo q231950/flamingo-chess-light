@@ -84,7 +84,7 @@ the SDK supplies the back button. Screens come in `LightScreen` / `LightViewMode
 | `GamesListScreen` / `GameListRow` | The tool's home: the player's games and what their status means |
 | `RemoteGameScreen` / `CreateGameScreen` / `JoinByPhraseScreen` / `LightCodeInput` | REMOTE in the Games bottom bar: invite-code create and join, OTP-style per-letter entry |
 | `SharePhrase` | Sharing the invite code from inside a game |
-| `GameView` / `ChessBoard` | The board, its ViewModel, and rendering (a newspaper diagram — hatched dark squares on newsprint — check highlight, last-move square shading, selection framed in ink, targets dotted in light grey) |
+| `GameView` / `ChessBoard` | The board, its ViewModel, and rendering (a newspaper diagram — hatched dark squares on newsprint — check highlight, last move framed (dashed from, solid to), selection framed in ink, targets dotted in light grey) |
 | `GameActions` / `GameOutcome` | Draw offer/answer/decline, resign, and how a game ended |
 | `GamePanes` | Promotion picker, action row and centered message, shared by `GameView` and `HotSeatScreen` |
 | `HotSeatScreen` / `HotSeatGameModel` | "Local": two players on one phone, offline — see Hot seat below |
