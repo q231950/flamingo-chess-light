@@ -13,6 +13,11 @@ Users see the tool as `Flamingo Chess` — its launcher `label` in `tool/lightto
 from `Chess` because that title was already taken. `README.md` is the tool's own page, not
 upstream's SDK readme; its screenshots live in `docs/screenshots/`.
 
+The tool is locked to portrait: `orientation = "portrait"` in `tool/lighttool.toml` (the only
+value upstream's plugin accepts) makes the generated manifest set
+`android:screenOrientation="portrait"` on the activity, so the screen never rotates. That is
+unrelated to the board-turning `orientation` in `HotSeatGameModel` (see Hot seat below).
+
 `#flamingo chess` spans three repositories, and a change to the wire contract is a
 three-repo change:
 
